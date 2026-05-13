@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+EXPLOITRON - export.py
+Report exporter for EXPLOITRON by Cortex Labs (Carlos Alcocer).
+Generates PDF and HTML reports from saved scan sessions.
+"""
 
 import os
 import datetime
@@ -6,33 +11,43 @@ import mysql.connector
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER
 
+APP_NAME = "EXPLOITRON"
+APP_BRAND = "EXPLOITRON by Cortex Labs (Carlos Alcocer)"
+APP_REPO_URL = "https://github.com/corona10a/metatron"
+
+DB_HOST = os.getenv("EXPLOITRON_DB_HOST", "localhost")
+DB_USER = os.getenv("EXPLOITRON_DB_USER", "exploitron")
+DB_PASSWORD = os.getenv("EXPLOITRON_DB_PASSWORD", "123")
+DB_NAME = os.getenv("EXPLOITRON_DB_NAME", "exploitron")
+REPORT_DIR = os.getenv("EXPLOITRON_REPORT_DIR", os.path.expanduser("~/EXPLOITRON/reports"))
+
 SEVERITY_COLORS = {
     "critical": "#c0392b",
-    "high":     "#e67e22",
-    "medium":   "#f1c40f",
-    "low":      "#27ae60",
-    "unknown":  "#7f8c8d",
+    "high": "#e67e22",
+    "medium": "#f1c40f",
+    "low": "#27ae60",
+    "unknown": "#7f8c8d",
 }
 
 RISK_COLORS = {
     "CRITICAL": "#c0392b",
-    "HIGH":     "#e67e22",
-    "MEDIUM":   "#f1c40f",
-    "LOW":      "#27ae60",
-    "UNKNOWN":  "#7f8c8d",
+    "HIGH": "#e67e22",
+    "MEDIUM": "#f1c40f",
+    "LOW": "#27ae60",
+    "UNKNOWN": "#7f8c8d",
 }
 
 
 def get_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="metatron",
-        password="123",
-        database="metatron"
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
     )
 
 
@@ -50,8 +65,7 @@ def fetch_session(sl_no: int) -> dict:
     c.execute("SELECT * FROM summary WHERE sl_no = %s", (sl_no,))
     summary = c.fetchone()
     conn.close()
-    return {"history": history, "vulns": vulns, "fixes": fixes,
-            "exploits": exploits, "summary": summary}
+    return {"history": history, "vulns": vulns, "fixes": fixes, "exploits": exploits, "summary": summary}
 
 
 def fetch_all_history():
@@ -63,107 +77,73 @@ def fetch_all_history():
     return rows
 
 
+def _safe_target(target: str) -> str:
+    return target.replace("https://", "").replace("http://", "").replace("/", "_").replace(".", "_")
+
+
 def export_pdf(data: dict, output_dir: str) -> str:
-    h        = data["history"]
-    sl       = h[0]
-    tgt      = h[1]
-    date     = str(h[2])
-    risk     = data["summary"][4] if data["summary"] else "UNKNOWN"
-    ai       = data["summary"][3] if data["summary"] else ""
+    h = data["history"]
+    sl = h[0]
+    tgt = h[1]
+    date = str(h[2])
+    risk = data["summary"][4] if data["summary"] else "UNKNOWN"
+    ai = data["summary"][3] if data["summary"] else ""
 
     os.makedirs(output_dir, exist_ok=True)
-    safe = tgt.replace("https://","").replace("http://","").replace("/","_").replace(".","_")
-    filename = os.path.join(output_dir, f"metatron_SL{sl}_{safe}.pdf")
-    doc      = SimpleDocTemplate(filename, pagesize=A4,
-                                  topMargin=15*mm, bottomMargin=15*mm,
-                                  leftMargin=15*mm, rightMargin=15*mm)
+    filename = os.path.join(output_dir, f"exploitron_SL{sl}_{_safe_target(tgt)}.pdf")
+    doc = SimpleDocTemplate(filename, pagesize=A4, topMargin=15*mm, bottomMargin=15*mm, leftMargin=15*mm, rightMargin=15*mm)
 
-    title_style  = ParagraphStyle("t",  fontSize=22, fontName="Helvetica-Bold",
-                                   textColor=colors.HexColor("#c0392b"), spaceAfter=4)
-    sub_style    = ParagraphStyle("s",  fontSize=10, fontName="Helvetica",
-                                   textColor=colors.HexColor("#555555"), spaceAfter=2)
-    h1_style     = ParagraphStyle("h1", fontSize=13, fontName="Helvetica-Bold",
-                                   textColor=colors.HexColor("#2c3e50"),
-                                   spaceBefore=10, spaceAfter=4)
-    body_style   = ParagraphStyle("b",  fontSize=9,  fontName="Helvetica",
-                                   textColor=colors.black, leading=13)
-    code_style   = ParagraphStyle("c",  fontSize=7.5, fontName="Courier",
-                                   textColor=colors.HexColor("#2c3e50"),
-                                   backColor=colors.HexColor("#f4f4f4"),
-                                   leading=11, leftIndent=6, rightIndent=6,
-                                   spaceBefore=2, spaceAfter=2)
-    footer_style = ParagraphStyle("f",  fontSize=7,
-                                   textColor=colors.HexColor("#aaaaaa"),
-                                   alignment=TA_CENTER)
+    title_style = ParagraphStyle("title", fontSize=22, fontName="Helvetica-Bold", textColor=colors.HexColor("#27ae60"), spaceAfter=4)
+    sub_style = ParagraphStyle("subtitle", fontSize=10, fontName="Helvetica", textColor=colors.HexColor("#555555"), spaceAfter=2)
+    h1_style = ParagraphStyle("h1", fontSize=13, fontName="Helvetica-Bold", textColor=colors.HexColor("#2c3e50"), spaceBefore=10, spaceAfter=4)
+    body_style = ParagraphStyle("body", fontSize=9, fontName="Helvetica", textColor=colors.black, leading=13)
+    code_style = ParagraphStyle("code", fontSize=7.5, fontName="Courier", textColor=colors.HexColor("#2c3e50"), backColor=colors.HexColor("#f4f4f4"), leading=11, leftIndent=6, rightIndent=6, spaceBefore=2, spaceAfter=2)
+    footer_style = ParagraphStyle("footer", fontSize=7, textColor=colors.HexColor("#aaaaaa"), alignment=TA_CENTER)
+
     story = []
-
-    story.append(Paragraph("METATRON", title_style))
-    story.append(Paragraph("AI Penetration Testing Report", sub_style))
-    story.append(HRFlowable(width="100%", thickness=1.5,
-                             color=colors.HexColor("#c0392b"), spaceAfter=8))
+    story.append(Paragraph(APP_NAME, title_style))
+    story.append(Paragraph(f"{APP_BRAND} — AI Penetration Testing Report", sub_style))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#27ae60"), spaceAfter=8))
 
     risk_color = colors.HexColor(RISK_COLORS.get(risk.upper(), "#7f8c8d"))
-    meta = [["Target", tgt], ["Scan Date", date],
-            ["Session", f"SL# {sl}"], ["Risk Level", risk],
-            ["Generated", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")]]
+    meta = [["Target", tgt], ["Scan Date", date], ["Session", f"SL# {sl}"], ["Risk Level", risk], ["Generated", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")]]
     mt = Table(meta, colWidths=[35*mm, 130*mm])
     mt.setStyle(TableStyle([
-        ("FONTNAME",       (0,0), (-1,-1), "Helvetica"),
-        ("FONTSIZE",       (0,0), (-1,-1), 9),
-        ("FONTNAME",       (0,0), (0,-1),  "Helvetica-Bold"),
-        ("TEXTCOLOR",      (0,0), (0,-1),  colors.HexColor("#2c3e50")),
-        ("TEXTCOLOR",      (1,3), (1,3),   risk_color),
-        ("FONTNAME",       (1,3), (1,3),   "Helvetica-Bold"),
-        ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.HexColor("#f9f9f9"), colors.white]),
-        ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
-        ("PADDING",        (0,0), (-1,-1), 5),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (1, 3), (1, 3), risk_color),
+        ("FONTNAME", (1, 3), (1, 3), "Helvetica-Bold"),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f9f9f9"), colors.white]),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
+        ("PADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(mt)
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("Vulnerabilities", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#dddddd"), spaceAfter=6))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd"), spaceAfter=6))
     if data["vulns"]:
         vd = [["#", "Vulnerability", "Severity", "Port", "Service"]]
         for v in data["vulns"]:
-            vd.append([str(v[0]), str(v[2] or "-"),
-                       str(v[3] or "-").upper(), str(v[4] or "-"), str(v[5] or "-")])
-        vt  = Table(vd, colWidths=[10*mm, 72*mm, 24*mm, 18*mm, 28*mm], repeatRows=1)
-        vts = [
-            ("FONTNAME",       (0,0), (-1,0),  "Helvetica-Bold"),
-            ("FONTSIZE",       (0,0), (-1,-1), 8),
-            ("BACKGROUND",     (0,0), (-1,0),  colors.HexColor("#2c3e50")),
-            ("TEXTCOLOR",      (0,0), (-1,0),  colors.white),
-            ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
-            ("PADDING",        (0,0), (-1,-1), 5),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9f9f9"), colors.white]),
-        ]
-        for i, v in enumerate(data["vulns"], 1):
-            sc = colors.HexColor(SEVERITY_COLORS.get((v[3] or "unknown").lower(), "#7f8c8d"))
-            vts.append(("TEXTCOLOR", (2,i), (2,i), sc))
-            vts.append(("FONTNAME",  (2,i), (2,i), "Helvetica-Bold"))
-        vt.setStyle(TableStyle(vts))
+            vd.append([str(v[0]), str(v[2] or "-"), str(v[3] or "-").upper(), str(v[4] or "-"), str(v[5] or "-")])
+        vt = Table(vd, colWidths=[10*mm, 72*mm, 24*mm, 18*mm, 28*mm], repeatRows=1)
+        vt.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
+            ("PADDING", (0, 0), (-1, -1), 5),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f9f9f9"), colors.white]),
+        ]))
         story.append(vt)
-        story.append(Spacer(1, 6))
-
-        story.append(Paragraph("Vulnerability Details", h1_style))
-        story.append(HRFlowable(width="100%", thickness=0.5,
-                                 color=colors.HexColor("#dddddd"), spaceAfter=6))
-        for v in data["vulns"]:
-            sc  = colors.HexColor(SEVERITY_COLORS.get((v[3] or "unknown").lower(), "#7f8c8d"))
-            lbl = ParagraphStyle("vl", fontSize=9, fontName="Helvetica-Bold", textColor=sc)
-            story.append(Paragraph(f"[{(v[3] or 'UNKNOWN').upper()}] {v[2]}", lbl))
-            if v[6]:
-                story.append(Paragraph(str(v[6]), body_style))
-            story.append(Spacer(1, 4))
     else:
         story.append(Paragraph("No vulnerabilities recorded.", body_style))
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("Fixes & Mitigations", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#dddddd"), spaceAfter=6))
     if data["fixes"]:
         for f in data["fixes"]:
             story.append(Paragraph(f"Fix for vuln id={f[2]}:", body_style))
@@ -174,22 +154,18 @@ def export_pdf(data: dict, output_dir: str) -> str:
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("Exploits Attempted", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#dddddd"), spaceAfter=6))
     if data["exploits"]:
         ed = [["#", "Exploit", "Tool", "Result"]]
         for e in data["exploits"]:
-            ed.append([str(e[0]), str(e[2] or "-")[:60],
-                       str(e[3] or "-")[:30], str(e[5] or "-")[:30]])
+            ed.append([str(e[0]), str(e[2] or "-")[:60], str(e[3] or "-")[:30], str(e[5] or "-")[:30]])
         et = Table(ed, colWidths=[10*mm, 80*mm, 40*mm, 28*mm])
         et.setStyle(TableStyle([
-            ("FONTNAME",       (0,0), (-1,0),  "Helvetica-Bold"),
-            ("FONTSIZE",       (0,0), (-1,-1), 8),
-            ("BACKGROUND",     (0,0), (-1,0),  colors.HexColor("#2c3e50")),
-            ("TEXTCOLOR",      (0,0), (-1,0),  colors.white),
-            ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
-            ("PADDING",        (0,0), (-1,-1), 5),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9f9f9"), colors.white]),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#dddddd")),
+            ("PADDING", (0, 0), (-1, -1), 5),
         ]))
         story.append(et)
     else:
@@ -197,8 +173,6 @@ def export_pdf(data: dict, output_dir: str) -> str:
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("AI Analysis Summary", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#dddddd"), spaceAfter=6))
     if ai:
         for line in str(ai).split("\n"):
             line = line.strip()
@@ -209,65 +183,51 @@ def export_pdf(data: dict, output_dir: str) -> str:
         story.append(Paragraph("No AI analysis recorded.", body_style))
 
     story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#dddddd"), spaceAfter=4))
-    story.append(Paragraph(
-        "Generated by METATRON — AI Penetration Testing Assistant | "
-        "github.com/sooryathejas/METATRON | For authorized use only.",
-        footer_style))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd"), spaceAfter=4))
+    story.append(Paragraph(f"Generated by {APP_BRAND} | {APP_REPO_URL} | For authorized use only.", footer_style))
 
     doc.build(story)
     return filename
 
 
 def export_html(data: dict, output_dir: str) -> str:
-    h    = data["history"]
-    sl   = h[0]
-    tgt  = h[1]
+    h = data["history"]
+    sl = h[0]
+    tgt = h[1]
     date = str(h[2])
     risk = data["summary"][4] if data["summary"] else "UNKNOWN"
-    ai   = data["summary"][3] if data["summary"] else ""
-    rc   = RISK_COLORS.get(risk.upper(), "#7f8c8d")
+    ai = data["summary"][3] if data["summary"] else ""
+    rc = RISK_COLORS.get(risk.upper(), "#7f8c8d")
 
     os.makedirs(output_dir, exist_ok=True)
-    safe = tgt.replace("https://","").replace("http://","").replace("/","_").replace(".","_")
-    filename = os.path.join(output_dir, f"metatron_SL{sl}_{safe}.html")
+    filename = os.path.join(output_dir, f"exploitron_SL{sl}_{_safe_target(tgt)}.html")
+
     vuln_rows = ""
     for v in data["vulns"]:
         sc = SEVERITY_COLORS.get((v[3] or "unknown").lower(), "#7f8c8d")
-        vuln_rows += (f"<tr><td>{v[0]}</td>"
-                      f"<td><strong>{v[2]}</strong><br><small>{v[6] or ''}</small></td>"
-                      f"<td><span style='color:{sc};font-weight:bold'>"
-                      f"{(v[3] or 'unknown').upper()}</span></td>"
-                      f"<td>{v[4] or '-'}</td><td>{v[5] or '-'}</td></tr>")
+        vuln_rows += f"<tr><td>{v[0]}</td><td><strong>{v[2]}</strong><br><small>{v[6] or ''}</small></td><td><span style='color:{sc};font-weight:bold'>{(v[3] or 'unknown').upper()}</span></td><td>{v[4] or '-'}</td><td>{v[5] or '-'}</td></tr>"
 
     fix_rows = ""
     for f in data["fixes"]:
-        fix_rows += (f"<tr><td>{f[0]}</td><td>vuln #{f[2]}</td>"
-                     f"<td><code>{f[3] or '-'}</code></td>"
-                     f"<td>{f[4] or 'ai'}</td></tr>")
+        fix_rows += f"<tr><td>{f[0]}</td><td>vuln #{f[2]}</td><td><code>{f[3] or '-'}</code></td><td>{f[4] or 'ai'}</td></tr>"
 
     exp_rows = ""
     for e in data["exploits"]:
-        exp_rows += (f"<tr><td>{e[0]}</td><td>{e[2] or '-'}</td>"
-                     f"<td>{e[3] or '-'}</td>"
-                     f"<td><code>{str(e[4] or '-')[:80]}</code></td>"
-                     f"<td>{e[5] or '-'}</td></tr>")
+        exp_rows += f"<tr><td>{e[0]}</td><td>{e[2] or '-'}</td><td>{e[3] or '-'}</td><td><code>{str(e[4] or '-')[:80]}</code></td><td>{e[5] or '-'}</td></tr>"
 
-    ai_html = "".join(f"<p>{line}</p>"
-                      for line in str(ai).split("\n") if line.strip())
+    ai_html = "".join(f"<p>{line}</p>" for line in str(ai).split("\n") if line.strip())
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Metatron Report — {tgt}</title>
+<title>{APP_NAME} Report — {tgt}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:'Segoe UI',sans-serif;background:#0d0d0d;color:#e0e0e0;padding:30px}}
 .container{{max-width:960px;margin:auto}}
-.header{{border-left:5px solid #c0392b;padding-left:16px;margin-bottom:30px}}
-.header h1{{font-size:2.2em;color:#c0392b}}
+.header{{border-left:5px solid #27ae60;padding-left:16px;margin-bottom:30px}}
+.header h1{{font-size:2.2em;color:#27ae60}}
 .header p{{color:#888;font-size:.95em}}
 .meta-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}}
 .meta-card{{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:14px}}
@@ -275,78 +235,35 @@ body{{font-family:'Segoe UI',sans-serif;background:#0d0d0d;color:#e0e0e0;padding
 .meta-card .value{{font-size:1.1em;font-weight:bold}}
 .risk{{color:{rc}}}
 section{{margin-bottom:30px}}
-section h2{{font-size:1.2em;color:#c0392b;border-bottom:1px solid #333;
-            padding-bottom:8px;margin-bottom:14px}}
+section h2{{font-size:1.2em;color:#27ae60;border-bottom:1px solid #333;padding-bottom:8px;margin-bottom:14px}}
 table{{width:100%;border-collapse:collapse;font-size:.88em}}
-th{{background:#1e1e1e;color:#aaa;text-align:left;padding:10px;
-    font-size:.8em;text-transform:uppercase;border-bottom:2px solid #333}}
+th{{background:#1e1e1e;color:#aaa;text-align:left;padding:10px;font-size:.8em;text-transform:uppercase;border-bottom:2px solid #333}}
 td{{padding:10px;border-bottom:1px solid #222;vertical-align:top}}
 tr:hover td{{background:#1a1a1a}}
-code{{background:#1e1e1e;padding:2px 6px;border-radius:3px;
-      font-family:monospace;font-size:.85em;color:#e74c3c}}
-.ai-box{{background:#111;border:1px solid #333;border-radius:6px;
-         padding:16px;font-size:.9em;line-height:1.7;color:#ccc}}
+code{{background:#1e1e1e;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:.85em;color:#27ae60}}
+.ai-box{{background:#111;border:1px solid #333;border-radius:6px;padding:16px;font-size:.9em;line-height:1.7;color:#ccc}}
 .ai-box p{{margin-bottom:8px}}
-.footer{{text-align:center;color:#444;font-size:.78em;
-         margin-top:40px;border-top:1px solid #222;padding-top:16px}}
-a{{color:#555}}
+.footer{{text-align:center;color:#444;font-size:.78em;margin-top:40px;border-top:1px solid #222;padding-top:16px}}
+a{{color:#27ae60}}
 </style>
 </head>
 <body>
 <div class="container">
-
 <div class="header">
-  <h1>🔱 METATRON</h1>
-  <p>AI Penetration Testing Report</p>
+  <h1>⚡ {APP_NAME}</h1>
+  <p>{APP_BRAND} — AI Penetration Testing Report</p>
 </div>
-
 <div class="meta-grid">
-  <div class="meta-card">
-    <div class="label">Target</div>
-    <div class="value">{tgt}</div>
-  </div>
-  <div class="meta-card">
-    <div class="label">Session</div>
-    <div class="value">SL# {sl}</div>
-  </div>
-  <div class="meta-card">
-    <div class="label">Scan Date</div>
-    <div class="value">{date}</div>
-  </div>
-  <div class="meta-card">
-    <div class="label">Risk Level</div>
-    <div class="value risk">{risk}</div>
-  </div>
+  <div class="meta-card"><div class="label">Target</div><div class="value">{tgt}</div></div>
+  <div class="meta-card"><div class="label">Session</div><div class="value">SL# {sl}</div></div>
+  <div class="meta-card"><div class="label">Scan Date</div><div class="value">{date}</div></div>
+  <div class="meta-card"><div class="label">Risk Level</div><div class="value risk">{risk}</div></div>
 </div>
-
-<section>
-  <h2>Vulnerabilities</h2>
-  {'<table><thead><tr><th>#</th><th>Vulnerability</th><th>Severity</th><th>Port</th><th>Service</th></tr></thead><tbody>' + vuln_rows + '</tbody></table>' if data["vulns"] else '<p style="color:#888">None recorded.</p>'}
-</section>
-
-<section>
-  <h2>Fixes &amp; Mitigations</h2>
-  {'<table><thead><tr><th>#</th><th>Vuln</th><th>Fix</th><th>Source</th></tr></thead><tbody>' + fix_rows + '</tbody></table>' if data["fixes"] else '<p style="color:#888">None recorded.</p>'}
-</section>
-
-<section>
-  <h2>Exploits Attempted</h2>
-  {'<table><thead><tr><th>#</th><th>Exploit</th><th>Tool</th><th>Payload</th><th>Result</th></tr></thead><tbody>' + exp_rows + '</tbody></table>' if data["exploits"] else '<p style="color:#888">None recorded.</p>'}
-</section>
-
-<section>
-  <h2>AI Analysis Summary</h2>
-  <div class="ai-box">
-    {ai_html if ai_html else '<p style="color:#888">None recorded.</p>'}
-  </div>
-</section>
-
-<div class="footer">
-  Generated by METATRON &mdash;
-  <a href="https://github.com/sooryathejas/METATRON">github.com/sooryathejas/METATRON</a>
-  &mdash; For authorized use only.
-</div>
-
+<section><h2>Vulnerabilities</h2>{'<table><thead><tr><th>#</th><th>Vulnerability</th><th>Severity</th><th>Port</th><th>Service</th></tr></thead><tbody>' + vuln_rows + '</tbody></table>' if data["vulns"] else '<p style="color:#888">None recorded.</p>'}</section>
+<section><h2>Fixes &amp; Mitigations</h2>{'<table><thead><tr><th>#</th><th>Vuln</th><th>Fix</th><th>Source</th></tr></thead><tbody>' + fix_rows + '</tbody></table>' if data["fixes"] else '<p style="color:#888">None recorded.</p>'}</section>
+<section><h2>Exploits Attempted</h2>{'<table><thead><tr><th>#</th><th>Exploit</th><th>Tool</th><th>Payload</th><th>Result</th></tr></thead><tbody>' + exp_rows + '</tbody></table>' if data["exploits"] else '<p style="color:#888">None recorded.</p>'}</section>
+<section><h2>AI Analysis Summary</h2><div class="ai-box">{ai_html if ai_html else '<p style="color:#888">None recorded.</p>'}</div></section>
+<div class="footer">Generated by {APP_BRAND} &mdash; <a href="{APP_REPO_URL}">{APP_REPO_URL}</a> &mdash; For authorized use only.</div>
 </div>
 </body>
 </html>"""
@@ -361,8 +278,8 @@ def export_menu(data: dict):
         print("[!] No session data to export.")
         return
 
-    h   = data["history"]
-    sl  = h[0]
+    h = data["history"]
+    sl = h[0]
     tgt = h[1]
 
     print(f"\n\033[33m{'─'*20} EXPORT SL#{sl} — {tgt} {'─'*20}\033[0m")
@@ -372,8 +289,8 @@ def export_menu(data: dict):
     print("  [4] Back")
     print(f"\033[90m{'─'*60}\033[0m")
 
-    choice     = input("\033[36mExport format: \033[0m").strip()
-    output_dir = os.path.expanduser("~/METATRON/reports")
+    choice = input("\033[36mExport format: \033[0m").strip()
+    output_dir = REPORT_DIR
     os.makedirs(output_dir, exist_ok=True)
 
     if choice == "1":
@@ -394,7 +311,7 @@ def export_menu(data: dict):
 
 
 if __name__ == "__main__":
-    print("\n\033[91m    METATRON — Standalone Report Exporter\033[0m")
+    print(f"\n\033[92m    {APP_NAME} — Standalone Report Exporter\033[0m")
     print("\033[90m    ─────────────────────────────────────\033[0m\n")
 
     rows = fetch_all_history()
