@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-METATRON - search.py
-Free web search via DuckDuckGo — no API key needed.
+EXPLOITRON - search.py
+Free web search via DuckDuckGo for EXPLOITRON by Cortex Labs (Carlos Alcocer).
 Also fetches and extracts plain text from URLs.
-Used by LLM tool dispatch when AI writes [SEARCH: query]
+Used by the AI analysis loop when the assistant requests [SEARCH: query].
 """
 
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS   # pip install duckduckgo-search
+from ddgs import DDGS
 
 
 # ─────────────────────────────────────────────
@@ -18,8 +18,7 @@ from ddgs import DDGS   # pip install duckduckgo-search
 def web_search(query: str, max_results: int = 5) -> str:
     """
     Search DuckDuckGo and return formatted results.
-    No API key. No rate limit issues for reasonable usage.
-    Returns a string ready to paste into LLM prompt.
+    No API key. Returns a string ready for AI context.
     """
     print(f"  [*] Searching: {query}")
     try:
@@ -47,16 +46,10 @@ def web_search(query: str, max_results: int = 5) -> str:
 # ─────────────────────────────────────────────
 
 def search_cve(cve_id: str) -> str:
-    """
-    Search for a specific CVE.
-    Queries DDG then also hits cve.mitre.org directly.
-    """
+    """Search for a specific CVE using DuckDuckGo and MITRE."""
     print(f"  [*] Looking up {cve_id}...")
 
-    # DDG search first
-    ddg_results = web_search(f"{cve_id} vulnerability exploit details", max_results=3)
-
-    # Direct MITRE fetch
+    ddg_results = web_search(f"{cve_id} vulnerability mitigation details", max_results=3)
     mitre_url = f"https://cve.mitre.org/cgi-bin/cvename.cgi?name={cve_id}"
     mitre_data = fetch_page(mitre_url, max_chars=2000)
 
@@ -64,18 +57,13 @@ def search_cve(cve_id: str) -> str:
 
 
 def search_exploit(service: str, version: str) -> str:
-    """
-    Search for known exploits for a service + version combo.
-    e.g. search_exploit("apache", "2.4.49")
-    """
-    query = f"{service} {version} exploit CVE vulnerability 2023 2024"
+    """Search for public security advisories for a service + version combo."""
+    query = f"{service} {version} security advisory CVE mitigation"
     return web_search(query, max_results=5)
 
 
 def search_fix(vuln_name: str) -> str:
-    """
-    Search for mitigation/fix for a vulnerability.
-    """
+    """Search for mitigation/fix for a vulnerability."""
     query = f"how to fix {vuln_name} security mitigation patch"
     return web_search(query, max_results=3)
 
@@ -87,7 +75,7 @@ def search_fix(vuln_name: str) -> str:
 def fetch_page(url: str, max_chars: int = 3000) -> str:
     """
     Fetch a URL and return extracted plain text.
-    Strips all HTML tags. Truncated to max_chars for LLM context.
+    Strips HTML tags and truncates to max_chars for AI context.
     """
     try:
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/120.0"}
@@ -96,14 +84,11 @@ def fetch_page(url: str, max_chars: int = 3000) -> str:
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # remove nav/footer/script noise
         for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
 
         text = soup.get_text(separator="\n", strip=True)
-
-        # collapse blank lines
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         clean = "\n".join(lines)
 
         if len(clean) > max_chars:
@@ -122,38 +107,27 @@ def fetch_page(url: str, max_chars: int = 3000) -> str:
 
 
 # ─────────────────────────────────────────────
-# TOOL DISPATCH HANDLER
+# SEARCH DISPATCH HANDLER
 # ─────────────────────────────────────────────
 
 def handle_search_dispatch(query: str) -> str:
     """
-    Called by llm.py when AI writes [SEARCH: something].
-    Smartly routes to CVE lookup, exploit search, or general search.
+    Called by llm.py when AI requests [SEARCH: something].
+    Routes to CVE lookup, fix search, or general search.
     """
     query = query.strip()
 
-    # CVE pattern — CVE-YYYY-NNNNN
     import re
     cve_pattern = re.compile(r'CVE-\d{4}-\d{4,7}', re.IGNORECASE)
     cve_match = cve_pattern.search(query)
     if cve_match:
         return search_cve(cve_match.group())
 
-    # exploit keywords
-    if any(word in query.lower() for word in ["exploit", "poc", "payload", "rce", "lfi", "sqli"]):
-        return web_search(query + " exploit poc github", max_results=5)
-
-    # fix/patch keywords
-    if any(word in query.lower() for word in ["fix", "patch", "mitigate", "harden", "secure"]):
+    if any(word in query.lower() for word in ["fix", "patch", "mitigate", "mitigation", "harden", "secure"]):
         return search_fix(query)
 
-    # default general search
     return web_search(query, max_results=5)
 
-
-# ─────────────────────────────────────────────
-# QUICK TEST
-# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("[ search.py test ]\n")
