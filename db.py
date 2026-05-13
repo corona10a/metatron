@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """
-METATRON - db.py
-MariaDB connection + all read/write/edit/delete operations
-Database: metatron
+EXPLOITRON - db.py
+MariaDB connection + all read/write/edit/delete operations.
+Default database: exploitron
 """
 
+import os
 import mysql.connector
 from datetime import datetime
+
+
+DB_HOST = os.getenv("EXPLOITRON_DB_HOST", "localhost")
+DB_USER = os.getenv("EXPLOITRON_DB_USER", "exploitron")
+DB_PASSWORD = os.getenv("EXPLOITRON_DB_PASSWORD", "123")
+DB_NAME = os.getenv("EXPLOITRON_DB_NAME", "exploitron")
 
 
 # ─────────────────────────────────────────────
@@ -14,12 +21,12 @@ from datetime import datetime
 # ─────────────────────────────────────────────
 
 def get_connection():
-    """Returns a MariaDB connection. No password (local setup)."""
+    """Returns a MariaDB connection using EXPLOITRON_* environment variables."""
     return mysql.connector.connect(
-        host="localhost",
-        user="metatron",
-        password="123",
-        database="metatron"
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
     )
 
 
@@ -73,7 +80,7 @@ def save_exploit(sl_no, exploit_name, tool_used, payload, result, notes):
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO exploits_attempted 
+        INSERT INTO exploits_attempted
         (sl_no, exploit_name, tool_used, payload, result, notes)
         VALUES (%s, %s, %s, %s, %s, %s)
     """, (
@@ -138,11 +145,11 @@ def get_session(sl_no: int) -> dict:
     conn.close()
 
     return {
-        "history":   history,
-        "vulns":     vulns,
-        "fixes":     fixes,
-        "exploits":  exploits,
-        "summary":   summary
+        "history": history,
+        "vulns": vulns,
+        "fixes": fixes,
+        "exploits": exploits,
+        "summary": summary,
     }
 
 
@@ -247,7 +254,7 @@ def delete_vulnerability(vuln_id: int):
 
 
 def delete_exploit(exploit_id: int):
-    """Delete a single exploit attempt."""
+    """Delete a single recorded exploit attempt."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("DELETE FROM exploits_attempted WHERE id = %s", (exploit_id,))
@@ -267,17 +274,14 @@ def delete_fix(fix_id: int):
 
 
 def delete_full_session(sl_no: int):
-    """
-    Wipe everything linked to a sl_no across all 5 tables.
-    Order matters — delete children before parent (FK constraints).
-    """
+    """Wipe everything linked to a sl_no across all tables."""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("DELETE FROM fixes             WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM fixes              WHERE sl_no = %s", (sl_no,))
     c.execute("DELETE FROM exploits_attempted WHERE sl_no = %s", (sl_no,))
-    c.execute("DELETE FROM vulnerabilities   WHERE sl_no = %s", (sl_no,))
-    c.execute("DELETE FROM summary           WHERE sl_no = %s", (sl_no,))
-    c.execute("DELETE FROM history           WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM vulnerabilities    WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM summary            WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM history            WHERE sl_no = %s", (sl_no,))
     conn.commit()
     conn.close()
     print(f"[+] Full session SL#{sl_no} deleted from all tables.")
@@ -337,15 +341,11 @@ def print_session(data: dict):
     print()
 
 
-# ─────────────────────────────────────────────
-# QUICK CONNECTION TEST
-# ─────────────────────────────────────────────
-
 if __name__ == "__main__":
     try:
         conn = get_connection()
         print("[+] MariaDB connection successful.")
-        print("[+] Database: metatron")
+        print(f"[+] Database: {DB_NAME}")
         conn.close()
     except Exception as e:
         print(f"[!] Connection failed: {e}")
